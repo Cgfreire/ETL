@@ -1,0 +1,47 @@
+-- Criação da tabela stg.COTHIST
+CREATE TABLE stg.COTHIST (
+    PRECO_ABER TEXT,
+    PRECO_MAX TEXT,
+    PRECO_MIN TEXT,
+    PRECO_MED TEXT,
+    PRECO_ULT TEXT,
+    PRECO_OFC TEXT,
+    PRECO_OFV TEXT,
+    QTD_TOTAL_NEGOCIOS TEXT,
+    QTD_TOTAL_TITULOS_NEG TEXT,
+    VOLUME_TOTAL_NEG TEXT,
+    NOME_EMPRESA TEXT,
+    DATA TEXT,
+    ATIVO TEXT
+);
+
+-- Criação da tabela dw.FactIndicadores
+CREATE TABLE dw.FactIndicadores (
+    IdFactIndicadores SERIAL PRIMARY KEY,
+    IdDimData INT NOT NULL,
+    IdDimAtivo INT NOT NULL,
+    IdDimEmpresa INT NOT NULL,
+    PRECO_ABERTURA NUMERIC(15, 2),
+    PRECO_MAXIMO NUMERIC(15, 2),
+    PRECO_MINIMO NUMERIC(15, 2),
+    PRECO_MEDIO NUMERIC(15, 2),
+    PRECO_ULTIMA_NEGOCIACAO NUMERIC(15, 2),
+    PRECO_MELHOR_OFERTA_COMPRA NUMERIC(15, 2),
+    PRECO_MELHOR_OFERTA_VENDA NUMERIC(15, 2),
+    QTD_TOTAL_NEGOCIOS BIGINT,
+    QTD_TOTAL_TITULOS_NEGOCIADOS BIGINT,
+    VOLUME_TOTAL_TITULOS_NEGOCIADOS BIGINT
+);
+
+-- Adicionando as restrições de chave estrangeira
+ALTER TABLE dw.FactIndicadores 
+ADD CONSTRAINT FK_FactIndicadores_DimAtivo 
+FOREIGN KEY (IdDimAtivo) REFERENCES dw.DimAtivo(IdDimAtivo);
+
+ALTER TABLE dw.FactIndicadores 
+ADD CONSTRAINT FK_FactIndicadores_DimEmpresa 
+FOREIGN KEY (IdDimEmpresa) REFERENCES dw.DimEmpresa(IdDimEmpresa);
+
+ALTER TABLE dw.FactIndicadores 
+ADD CONSTRAINT FK_FactIndicadores_DimData 
+FOREIGN KEY (IdDimData) REFERENCES dw.DimData(IdDimData);

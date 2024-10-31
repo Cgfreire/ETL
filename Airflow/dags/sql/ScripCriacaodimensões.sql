@@ -1,23 +1,24 @@
---DimAtivo
+-- Remover as tabelas se existirem
+DROP TABLE IF EXISTS dw.FactIndicadores CASCADE;
+DROP TABLE IF EXISTS stg.COTHIST CASCADE;
+DROP TABLE IF EXISTS dw.DimAtivo CASCADE;
+DROP TABLE IF EXISTS dw.DimEmpresa CASCADE;
+DROP TABLE IF EXISTS dw.DimData CASCADE;
 
+-- Criação da tabela dw.DimAtivo
 CREATE TABLE dw.DimAtivo (
-	IdDimAtivo INT IDENTITY,
-	Ativo VARCHAR(20) NOT NULL,
-)
-ALTER TABLE dw.DimAtivo ADD CONSTRAINT PK_DimAtivo_IdDimAtivo PRIMARY KEY (IdDimAtivo)
+    IdDimAtivo SERIAL PRIMARY KEY,
+    Ativo VARCHAR(20) NOT NULL
+);
 
---DimEmpresa
+-- Criação da tabela dw.DimEmpresa
 CREATE TABLE dw.DimEmpresa (
-	IdDimEmpresa INT IDENTITY,
-	Empresa VARCHAR(20) NOT NULL,
-)
-ALTER TABLE dw.DimEmpresa ADD CONSTRAINT PK_DimEmpresa_IdDimEmpresa PRIMARY KEY (IdDimEmpresa)
+    IdDimEmpresa SERIAL PRIMARY KEY,
+    Empresa VARCHAR(20) NOT NULL
+);
 
---DimData
+-- Criação da tabela dw.DimData
 CREATE TABLE dw.DimData (
-	IdDimData INT IDENTITY,
-	DataReferencia VARCHAR(20) NOT NULL,
-)
-ALTER TABLE dw.DimData ADD CONSTRAINT PK_DimData_IdDimData PRIMARY KEY (IdDimData)
-
-
+    IdDimData SERIAL PRIMARY KEY,
+    DataReferencia VARCHAR(20) NOT NULL
+);
