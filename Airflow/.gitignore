@@ -1,3 +1,6 @@
 /dags/__pychace__
 /logs
 /dags/files
+/dags/sql/insere_dados_dw.sql
+
+/dags/sql/dag_coleta_dados_sales_order.py
