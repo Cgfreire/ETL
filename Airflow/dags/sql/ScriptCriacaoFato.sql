@@ -1,46 +1,40 @@
 -- Criação da tabela stg.COTHIST
 CREATE TABLE stg.COTHIST (
-    PRECO_ABER TEXT,
-    PRECO_MAX TEXT,
-    PRECO_MIN TEXT,
-    PRECO_MED TEXT,
-    PRECO_ULT TEXT,
-    PRECO_OFC TEXT,
-    PRECO_OFV TEXT,
-    QTD_TOTAL_NEGOCIOS TEXT,
-    QTD_TOTAL_TITULOS_NEG TEXT,
-    VOLUME_TOTAL_NEG TEXT,
-    NOME_EMPRESA TEXT,
-    DATA TEXT,
-    ATIVO TEXT
+    tipo_registro TEXT,
+    data_pregao TEXT,
+    cod_bdi TEXT,
+    cod_negociacao TEXT,
+    tipo_mercado TEXT,
+    nome_empresa TEXT,
+    moeda TEXT,
+    preco_abertura TEXT,
+    preco_maximo TEXT,
+    preco_minimo TEXT,
+    preco_medio TEXT,
+    preco_ultimo_negocio TEXT ,
+    preco_melhor_oferta_compra TEXT,
+    preco_melhor_oferta_venda TEXT,
+    numero_negocios TEXT,
+    quantidade_papeis_negociados TEXT,
+    volume_total_negociado TEXT,
+    codigo_isin TEXT, 
+    num_distribuicao_papel TEXT
 );
 
 -- Criação da tabela dw.FactIndicadores
-CREATE TABLE dw.FactIndicadores (
+CREATE TABLE dw.FactCotacao (
     IdFactIndicadores SERIAL PRIMARY KEY,
-    IdDimData INT NOT NULL,
     IdDimAtivo INT NOT NULL,
-    IdDimEmpresa INT NOT NULL,
+    IdDimData INT NOT NULL,
     PRECO_ABERTURA NUMERIC(15, 2),
-    PRECO_MAXIMO NUMERIC(15, 2),
-    PRECO_MINIMO NUMERIC(15, 2),
-    PRECO_MEDIO NUMERIC(15, 2),
-    PRECO_ULTIMA_NEGOCIACAO NUMERIC(15, 2),
-    PRECO_MELHOR_OFERTA_COMPRA NUMERIC(15, 2),
-    PRECO_MELHOR_OFERTA_VENDA NUMERIC(15, 2),
-    QTD_TOTAL_NEGOCIOS BIGINT,
-    QTD_TOTAL_TITULOS_NEGOCIADOS BIGINT,
-    VOLUME_TOTAL_TITULOS_NEGOCIADOS BIGINT
+    PRECO_FECHAMENTO NUMERIC(15, 2),
+    VOLUME_NEGOCIACOES BIGINT
 );
 
 -- Adicionando as restrições de chave estrangeira
 ALTER TABLE dw.FactIndicadores 
 ADD CONSTRAINT FK_FactIndicadores_DimAtivo 
 FOREIGN KEY (IdDimAtivo) REFERENCES dw.DimAtivo(IdDimAtivo);
-
-ALTER TABLE dw.FactIndicadores 
-ADD CONSTRAINT FK_FactIndicadores_DimEmpresa 
-FOREIGN KEY (IdDimEmpresa) REFERENCES dw.DimEmpresa(IdDimEmpresa);
 
 ALTER TABLE dw.FactIndicadores 
 ADD CONSTRAINT FK_FactIndicadores_DimData 
