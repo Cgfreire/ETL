@@ -14,11 +14,8 @@ def get_db_connection():
 
 def extract():
     logging.info("Iniciando a extração...")
-    anos = ['2022', '2023', '2024']
-    arquivos = [f'/opt/airflow/files/COTAHIST_A{ano}.txt' for ano in anos]
-    
-    logging.info("Caminhos absolutos dos arquivos: %s", [os.path.abspath(arquivo) for arquivo in arquivos])
-    
+    arquivo = f'/opt/airflow/files/COTAHIST_A{datetime.date.today().year}.txt'
+        
     separar_campos = [2, 8, 2, 12, 3, 12, 10, 3, 4, 13, 13, 13, 13, 13, 13, 13, 5, 18, 18, 13, 1, 8, 7, 13, 12, 3]
     colunas = [
         "tipo_registro", "data_pregao", "cod_bdi", "cod_negociacao", "tipo_mercado", 
@@ -35,37 +32,32 @@ def extract():
     chunk_size = 10000
     
     try:
-        for arquivo in arquivos:
-            logging.info("Processando arquivo: %s", arquivo)
+        logging.info("Processando arquivo: %s", arquivo)
+        
+        for chunk in pd.read_fwf(arquivo, widths=separar_campos, header=0, chunksize=chunk_size):
+            logging.info("Lendo um bloco de dados...")
             
-            if not os.path.isfile(arquivo):
-                logging.error("Arquivo não encontrado: %s", arquivo)
-                continue
+            chunk.columns = colunas
+            
+            chunk = chunk[chunk['cod_negociacao'].isin(acoes)]
+            logging.info("Número de registros filtrados neste bloco: %d", chunk.shape[0])
 
-            for chunk in pd.read_fwf(arquivo, widths=separar_campos, header=0, chunksize=chunk_size):
-                logging.info("Lendo um bloco de dados...")
-                
-                chunk.columns = colunas
-                
-                chunk = chunk[chunk['cod_negociacao'].isin(acoes)]
-                logging.info("Número de registros filtrados neste bloco: %d", chunk.shape[0])
+            dinheiro = [
+                "preco_abertura", "preco_maximo", "preco_minimo", 
+                "preco_medio", "preco_ultimo_negocio", 
+                "preco_melhor_oferta_compra", "preco_melhor_oferta_venda"
+            ]
 
-                dinheiro = [
-                    "preco_abertura", "preco_maximo", "preco_minimo", 
-                    "preco_medio", "preco_ultimo_negocio", 
-                    "preco_melhor_oferta_compra", "preco_melhor_oferta_venda"
-                ]
+            for coluna in dinheiro:
+                if coluna in chunk.columns:
+                    logging.info("Antes da divisão - %s: %s", coluna, chunk[coluna].head())
+                    chunk[coluna] = chunk[coluna].astype(float) / 100
+                    logging.info("Depois da divisão - %s: %s", coluna, chunk[coluna].head())
 
-                for coluna in dinheiro:
-                    if coluna in chunk.columns:
-                        logging.info("Antes da divisão - %s: %s", coluna, chunk[coluna].head())
-                        chunk[coluna] = chunk[coluna].astype(float) / 100
-                        logging.info("Depois da divisão - %s: %s", coluna, chunk[coluna].head())
+            chunk['data_pregao'] = pd.to_datetime(chunk['data_pregao'], format='%Y%m%d', errors='coerce')
+            chunk['data_pregao'] = chunk['data_pregao'].dt.strftime('%d/%m/%Y')
 
-                chunk['data_pregao'] = pd.to_datetime(chunk['data_pregao'], format='%Y%m%d', errors='coerce')
-                chunk['data_pregao'] = chunk['data_pregao'].dt.strftime('%d/%m/%Y')
-
-                todos_dados.extend(chunk.to_dict(orient='records'))
+            todos_dados.extend(chunk.to_dict(orient='records'))
 
         logging.info("Total de registros extraídos: %d", len(todos_dados))
         return todos_dados
@@ -156,7 +148,7 @@ def insert_calendar_data(conn):
         SELECT DISTINCT 
             TO_DATE(data_pregao, 'YYYYMMDD') AS data
         FROM stg.COTHIST
-        WHERE data_pregao IS NOT NULL AND data_pregao <> ''
+        WHERE data_pregao IS NOT NULL AND data_pregao <> '' and TO_DATE(data_pregao, 'YYYYMMDD') = GETDATE()
         ON CONFLICT (DataReferencia) DO NOTHING;
         """)
         conn.commit()
@@ -171,7 +163,8 @@ def transform_and_enrich():
         with conn.cursor() as cursor:
             cursor.execute(""" 
             INSERT INTO dw.DimAtivo (ativo) 
-            SELECT DISTINCT cod_negociacao FROM stage_cotahist 
+            SELECT DISTINCT cod_negociacao FROM stage_cotahist a LEFT JOIN dw.DimAtivo b on a.cod_negociacao <> b.Ativo
+            WHERE b.Ativo is null
             ON CONFLICT (ativo) DO NOTHING;
             """)
 
@@ -180,7 +173,8 @@ def transform_and_enrich():
             SELECT da.id, dc.id, sc.preco_abertura, sc.preco_ultimo_negocio, sc.volume_total_negociado 
             FROM stg.COTHIST sc 
             JOIN dw.DimAtivo da ON sc.cod_negociacao = da.ativo
-            JOIN dw.DimData dc ON TO_DATE(sc.data_pregao, 'YYYYMMDD') = dc.data;
+            JOIN dw.DimData dc ON TO_DATE(sc.data_pregao, 'YYYYMMDD') = dc.data
+            WHERE TO_DATE(data_pregao, 'YYYYMMDD') = GETDATE();
             """)
 
         conn.commit()
