@@ -4,16 +4,14 @@ from airflow.operators.python import PythonOperator
 from airflow.hooks.postgres_hook import PostgresHook
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 import pandas as pd
-import os
-import logging
+
 
 def get_db_connection():
     """Obtém uma conexão com o banco de dados PostgreSQL."""
-    hook = PostgresHook(postgres_conn_id='postgres_default')
+    hook = PostgresHook(postgres_conn_id='postgrees-airflow')
     return hook.get_conn()
 
-def extract():
-    logging.info("Iniciando a extração...")
+def extracao():
     arquivo = f'/opt/airflow/files/COTAHIST_A{datetime.date.today().year}.txt'
         
     separar_campos = [2, 8, 2, 12, 3, 12, 10, 3, 4, 13, 13, 13, 13, 13, 13, 13, 5, 18, 18, 13, 1, 8, 7, 13, 12, 3]
@@ -26,22 +24,15 @@ def extract():
         "preco_exercicio", "indicador_correcao_precos", "data_vencimento", 
         "fator_cotacao", "preco_exercicio_pontos", "codigo_isin", "num_distribuicao_papel"
     ]
-    acoes = ['PETR4', 'VALE3', 'MGLU3', 'RAIZ4', 'AMBP3', 'B3SA3', 'ABEV3', 'ITUB4', 'WEGE3', 'BBDC4', 'QUAL3']
 
-    todos_dados = []
     chunk_size = 10000
     
     try:
-        logging.info("Processando arquivo: %s", arquivo)
         
         for chunk in pd.read_fwf(arquivo, widths=separar_campos, header=0, chunksize=chunk_size):
-            logging.info("Lendo um bloco de dados...")
-            
+                        
             chunk.columns = colunas
             
-            chunk = chunk[chunk['cod_negociacao'].isin(acoes)]
-            logging.info("Número de registros filtrados neste bloco: %d", chunk.shape[0])
-
             dinheiro = [
                 "preco_abertura", "preco_maximo", "preco_minimo", 
                 "preco_medio", "preco_ultimo_negocio", 
@@ -50,32 +41,24 @@ def extract():
 
             for coluna in dinheiro:
                 if coluna in chunk.columns:
-                    logging.info("Antes da divisão - %s: %s", coluna, chunk[coluna].head())
                     chunk[coluna] = chunk[coluna].astype(float) / 100
-                    logging.info("Depois da divisão - %s: %s", coluna, chunk[coluna].head())
 
             chunk['data_pregao'] = pd.to_datetime(chunk['data_pregao'], format='%Y%m%d', errors='coerce')
             chunk['data_pregao'] = chunk['data_pregao'].dt.strftime('%d/%m/%Y')
 
-            todos_dados.extend(chunk.to_dict(orient='records'))
-
-        logging.info("Total de registros extraídos: %d", len(todos_dados))
-        return todos_dados
+            carrega_stg(chunk.to_dict(orient='records'))
 
     except Exception as e:
-        logging.error("Erro na extração: %s", e)
         return []
 
 
-def load_stage(data):
+def carrega_stg(data):
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
-        logging.info("Inserindo dados na tabela stage...")
-
         insert_query = """
-        INSERT INTO stage_cotahist (
+        INSERT INTO stg.COTHIST (
             tipo_registro,
             data_pregao,
             cod_bdi,
@@ -99,8 +82,6 @@ def load_stage(data):
         """
         
         if data:
-            logging.info("Dados a serem inseridos: %s", data)
-
             for record in data:
                 values = (
                     str(record['tipo_registro']),
@@ -124,74 +105,66 @@ def load_stage(data):
                     str(record.get('num_distribuicao_papel', ''))
                 )
 
-                logging.info("Executando a inserção com os valores: %s", values)
                 cursor.execute(insert_query, values)
             
             conn.commit()
-            logging.info("Dados inseridos com sucesso.")
-        else:
-            logging.warning("Nenhum dado para inserir na tabela stage.")
+
 
     except Exception as e:
-        logging.error(f"Erro ao inserir dados: {e}")
         conn.rollback()
 
     finally:
         cursor.close()
         conn.close()
 
-def insert_calendar_data(conn):
-    """Insere dados na tabela de calendário, convertendo data_pregao para DATE."""
+def carrega_dim_data(conn):
     with conn.cursor() as cursor:
         cursor.execute("""
         INSERT INTO dw.DimData (DataReferencia)
         SELECT DISTINCT 
             TO_DATE(data_pregao, 'YYYYMMDD') AS data
         FROM stg.COTHIST
-        WHERE data_pregao IS NOT NULL AND data_pregao <> '' and TO_DATE(data_pregao, 'YYYYMMDD') = GETDATE()
+        LEFT JOIN dw.DimData b on TO_DATE(data_pregao, 'YYYYMMDD') b.DataReferencia
+        WHERE data_pregao IS NOT NULL AND data_pregao <> '' and TO_DATE(data_pregao, 'YYYYMMDD') = GETDATE() and b.DataReferencia is NULL
         ON CONFLICT (DataReferencia) DO NOTHING;
         """)
         conn.commit()
 
-def transform_and_enrich():
-    """Transforma e enriquece os dados da tabela de stage."""
+def carrega_dw():
     conn = get_db_connection()
     
     try:
-        insert_calendar_data(conn)
+        carrega_dim_data(conn)
 
         with conn.cursor() as cursor:
             cursor.execute(""" 
             INSERT INTO dw.DimAtivo (ativo) 
-            SELECT DISTINCT cod_negociacao FROM stage_cotahist a LEFT JOIN dw.DimAtivo b on a.cod_negociacao <> b.Ativo
+            SELECT DISTINCT cod_negociacao FROM stg.COTHIST a LEFT JOIN dw.DimAtivo b on a.cod_negociacao <> b.Ativo
             WHERE b.Ativo is null
             ON CONFLICT (ativo) DO NOTHING;
             """)
 
             cursor.execute(""" 
-            INSERT INTO dw.FactCotacao (IdDimAtivo, IdDimData, PRECO_ABERTURA, PRECO_FECHAMENTO, VOLUME_NEGOCIACOES) 
-            SELECT da.id, dc.id, sc.preco_abertura, sc.preco_ultimo_negocio, sc.volume_total_negociado 
-            FROM stg.COTHIST sc 
+           INSERT INTO dw.FactCotacao (IdDimAtivo, IdDimData, PRECO_ABERTURA, PRECO_FECHAMENTO, PRECO_MAXIMO, PRECO_MINIMO, VOLUME_NEGOCIACOES) 
+            SELECT da.id, dc.id, sc.preco_abertura, sc.preco_ultimo_negocio,sc.preco_maximo, sc.preco_minimo, sc.volume_total_negociado 
+            FROM stg.COTHIST sc
             JOIN dw.DimAtivo da ON sc.cod_negociacao = da.ativo
             JOIN dw.DimData dc ON TO_DATE(sc.data_pregao, 'YYYYMMDD') = dc.data
             WHERE TO_DATE(data_pregao, 'YYYYMMDD') = GETDATE();
             """)
 
         conn.commit()
-        logging.info("Dados transformados e enriquecidos com sucesso.")
 
     except Exception as e:
-        logging.error("Erro ao transformar e enriquecer dados: %s", e)
         conn.rollback()
 
     finally:
         conn.close()
 
-with DAG('carga_b3', schedule_interval='@daily', start_date=datetime(2024, 1, 1), catchup=False,template_searchpath = 'dags/sql') as dag:
-    cria_tabelas_dim_task = PostgresOperator(task_id = 'cria_tabelas_dim', postgres_conn_id = 'postgrees-airflow', sql='ScripCriacaodimensões.sql')
-    cria_tabelas_fact_task = PostgresOperator(task_id = 'cria_tabelas_fact',postgres_conn_id = 'postgrees-airflow', sql='ScriptCriacaoFato.sql')
-    extract_task = PythonOperator(task_id='extract', python_callable=extract)
-    load_stage_task = PythonOperator(task_id='load_stage',python_callable=load_stage,op_kwargs={'data': extract_task.output})
-    transform_and_enrich_task = PythonOperator(task_id='transform_and_enrich', python_callable=transform_and_enrich)
+with DAG('carga_diaria_b3', schedule_interval='@daily', start_date=datetime(2024, 1, 1), catchup=False,template_searchpath = 'dags/sql') as dag:
+    cria_tabela_stage = PostgresOperator(task_id = 'cria_tabela_stage',postgres_conn_id = 'postgrees-airflow', sql='ScriptCriacaoStageDiaria.sql')
+    extracao_task = PythonOperator(task_id='extracao', python_callable=extracao)
+    carrega_stg_task = PythonOperator(task_id='carrega_stg',python_callable=carrega_stg,op_kwargs={'data': extracao_task.output})
+    carrega_dw_task = PythonOperator(task_id='carrega_dw', python_callable=carrega_dw)
 
-    cria_tabelas_dim_task >> cria_tabelas_fact_task >> extract_task >> load_stage_task >> transform_and_enrich_task
+    cria_tabela_stage >> extracao_task >> carrega_stg_task >> carrega_dw_task
