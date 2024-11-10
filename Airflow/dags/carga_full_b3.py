@@ -125,11 +125,13 @@ def carrega_dim_data(conn):
     with conn.cursor() as cursor:
         cursor.execute("""
         INSERT INTO dw.DimData (DataReferencia)
-        SELECT DISTINCT 
-            TO_DATE(data_pregao, 'YYYYMMDD') AS data
+        SELECT DISTINCT
+            CASE 
+                WHEN data_pregao ~ '^\d{2}/\d{2}/\d{4}$' THEN TO_DATE(data_pregao, 'DD/MM/YYYY')
+                ELSE TO_dATE('31-12-9999', 'DD/MM/YYYY')
+            END AS data
         FROM stg.COTHIST
         WHERE data_pregao IS NOT NULL AND data_pregao <> ''
-        ON CONFLICT (DataReferencia) DO NOTHING;
         """)
         conn.commit()
 
@@ -143,15 +145,24 @@ def carrega_dw():
             cursor.execute(""" 
             INSERT INTO dw.DimAtivo (ativo) 
             SELECT DISTINCT cod_negociacao FROM stg.COTHIST 
-            ON CONFLICT (ativo) DO NOTHING;
             """)
 
             cursor.execute(""" 
             INSERT INTO dw.FactCotacao (IdDimAtivo, IdDimData, PRECO_ABERTURA, PRECO_FECHAMENTO, PRECO_MAXIMO, PRECO_MINIMO, VOLUME_NEGOCIACOES) 
-            SELECT da.id, dc.id, sc.preco_abertura, sc.preco_ultimo_negocio,sc.preco_maximo, sc.preco_minimo, sc.volume_total_negociado 
-            FROM stg.COTHIST sc 
-            LEFT JOIN dw.DimAtivo da ON sc.cod_negociacao = da.ativo
-            LEFT JOIN dw.DimData dc ON TO_DATE(sc.data_pregao, 'YYYYMMDD') = dc.data;
+            SELECT 
+                da.idDimAtivo, 
+                dc.idDimData, 
+                sc.preco_abertura::numeric, 
+                sc.preco_ultimo_negocio::numeric,
+                sc.preco_maximo::numeric, 
+                sc.preco_minimo::numeric, 
+                sc.volume_total_negociado::numeric
+			FROM stg.COTHIST sc
+			LEFT JOIN dw.DimAtivo da ON sc.cod_negociacao = da.ativo
+			LEFT JOIN dw.DimData dc ON 
+			  (CASE WHEN data_pregao ~ '^\d{2}/\d{2}/\d{4}$' THEN TO_DATE(data_pregao, 'DD/MM/YYYY')
+			       ELSE TO_DATE('31-12-9999', 'DD/MM/YYYY')
+			  END) = dc.DataREferencia;
             """)
 
         conn.commit()

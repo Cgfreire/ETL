@@ -30,14 +30,14 @@ CREATE TABLE dw.FactCotacao (
     PRECO_FECHAMENTO NUMERIC(15, 2),
     PRECO_MAXIMO NUMERIC(15,2),
     PRECO_MINIMO NUMERIC(15,2),
-    VOLUME_NEGOCIACOES BIGINT
+    VOLUME_NEGOCIACOES NUMERIC(15,2)
 );
 
 -- Adicionando as restrições de chave estrangeira
-ALTER TABLE dw.FactIndicadores 
-ADD CONSTRAINT FK_FactIndicadores_DimAtivo 
+ALTER TABLE dw.FactCotacao 
+ADD CONSTRAINT FK_FactCotacao_DimAtivo 
 FOREIGN KEY (IdDimAtivo) REFERENCES dw.DimAtivo(IdDimAtivo);
 
-ALTER TABLE dw.FactIndicadores 
-ADD CONSTRAINT FK_FactIndicadores_DimData 
+ALTER TABLE dw.FactFactCotacaoIndicadores 
+ADD CONSTRAINT FK_FactCotacao_DimData 
 FOREIGN KEY (IdDimData) REFERENCES dw.DimData(IdDimData);

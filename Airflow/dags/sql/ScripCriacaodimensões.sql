@@ -13,5 +13,5 @@ CREATE TABLE dw.DimAtivo (
 -- Criação da tabela dw.DimData
 CREATE TABLE dw.DimData (
     IdDimData SERIAL PRIMARY KEY,
-    DataReferencia VARCHAR(20) NOT NULL
+    DataReferencia DATE NOT NULL
 );
